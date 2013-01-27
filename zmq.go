@@ -1,5 +1,5 @@
 /*
-  Copyright 2010 Alec Thomas
+  Copyright 2010-2012 Alec Thomas
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -14,14 +14,7 @@
   limitations under the License.
 */
 
-//
-// This package implements Go bindings for the 0mq C API.
-//
-// It does not attempt to expose zmq_msg_t at all. Instead, Recv() and Send()
-// both operate on byte slices, allocating and freeing the memory
-// automatically. Currently this requires copying to/from C malloced memory,
-// but a future implementation may be able to avoid this to a certain extent.
-//
+// Go (golang) Bindings for 0mq (zmq, zeromq)
 package gozmq
 
 /*
@@ -60,65 +53,18 @@ type Socket interface {
 	apiSocket() unsafe.Pointer
 }
 
-type SocketOptions interface {
-	SetSockOptInt(option IntSocketOption, value int) error
-	SetSockOptInt64(option Int64SocketOption, value int64) error
-	SetSockOptUInt64(option UInt64SocketOption, value uint64) error
-	SetSockOptString(option StringSocketOption, value string) error
-	GetSockOptInt(option IntSocketOption) (value int, err error)
-	GetSockOptInt64(option Int64SocketOption) (value int64, err error)
-	GetSockOptUInt64(option UInt64SocketOption) (value uint64, err error)
-	GetSockOptString(option StringSocketOption) (value string, err error)
-
-	// Set options
-	SetAffinity(value uint64) error
-	SetBacklog(value int) error
-	SetHWM(value uint64) error
-	SetIdentity(value string) error
-	SetLinger(value int) error
-	SetMcastLoop(value int64) error
-	SetRate(value int64) error
-	SetRcvBuf(value uint64) error
-	SetReconnectIvl(value int) error
-	SetReconnectIvlMax(value int) error
-	SetRecoveryIvl(value int64) error
-	SetRecoveryIvlMsec(value int64) error
-	SetSndBuf(value uint64) error
-	SetSubscribe(value string) error
-	SetSwap(value int64) error
-	SetUnsubscribe(value string) error
-
-	// Get options
-	Affinity() (uint64, error)
-	Backlog() (int, error)
-	Fd() (int64, error)
-	HWM() (uint64, error)
-	Identity() (string, error)
-	Linger() (int, error)
-	McastLoop() (int64, error)
-	Rate() (int64, error)
-	RcvBuf() (uint64, error)
-	RcvMore() (rval uint64, e error)
-	ReconnectIvl() (int, error)
-	ReconnectIvlMax() (int, error)
-	RecoveryIvl() (int64, error)
-	RecoveryIvlMsec() (int64, error)
-	SndBuf() (uint64, error)
-	SocketType() (uint64, error)
-	Swap() (int64, error)
-
-}
-
 type SocketType int
 
 type IntSocketOption int
 type Int64SocketOption int
 type UInt64SocketOption int
 type StringSocketOption int
+type BoolSocketOption int
 
+type MessageOption int
 type SendRecvOption int
 
-const (
+var (
 	// NewSocket types
 	PAIR   = SocketType(C.ZMQ_PAIR)
 	PUB    = SocketType(C.ZMQ_PUB)
@@ -139,16 +85,12 @@ const (
 	DOWNSTREAM = PUSH
 
 	// NewSocket options
-	HWM               = UInt64SocketOption(C.ZMQ_HWM)
-	SWAP              = Int64SocketOption(C.ZMQ_SWAP)
 	AFFINITY          = UInt64SocketOption(C.ZMQ_AFFINITY)
 	IDENTITY          = StringSocketOption(C.ZMQ_IDENTITY)
 	SUBSCRIBE         = StringSocketOption(C.ZMQ_SUBSCRIBE)
 	UNSUBSCRIBE       = StringSocketOption(C.ZMQ_UNSUBSCRIBE)
 	RATE              = Int64SocketOption(C.ZMQ_RATE)
 	RECOVERY_IVL      = Int64SocketOption(C.ZMQ_RECOVERY_IVL)
-	RECOVERY_IVL_MSEC = Int64SocketOption(C.ZMQ_RECOVERY_IVL_MSEC)
-	MCAST_LOOP        = Int64SocketOption(C.ZMQ_MCAST_LOOP)
 	SNDBUF            = UInt64SocketOption(C.ZMQ_SNDBUF)
 	RCVBUF            = UInt64SocketOption(C.ZMQ_RCVBUF)
 	RCVMORE           = UInt64SocketOption(C.ZMQ_RCVMORE)
@@ -161,7 +103,6 @@ const (
 	BACKLOG           = IntSocketOption(C.ZMQ_BACKLOG)
 
 	// Send/recv options
-	NOBLOCK = SendRecvOption(C.ZMQ_NOBLOCK)
 	SNDMORE = SendRecvOption(C.ZMQ_SNDMORE)
 )
 
@@ -177,7 +118,7 @@ var (
 
 type PollEvents C.short
 
-const (
+var (
 	POLLIN  = PollEvents(C.ZMQ_POLLIN)
 	POLLOUT = PollEvents(C.ZMQ_POLLOUT)
 	POLLERR = PollEvents(C.ZMQ_POLLERR)
@@ -185,7 +126,7 @@ const (
 
 type DeviceType int
 
-const (
+var (
 	STREAMER  = DeviceType(C.ZMQ_STREAMER)
 	FORWARDER = DeviceType(C.ZMQ_FORWARDER)
 	QUEUE     = DeviceType(C.ZMQ_QUEUE)
@@ -361,18 +302,21 @@ func (s *zmqOptions) GetSockOptString(option StringSocketOption) (value string, 
 	return
 }
 
+// Get a bool option from the socket.
+// int zmq_getsockopt (void *s, int option, void *optval, size_t *optvallen);
+func (s *zmqOptions) GetSockOptBool(option BoolSocketOption) (value bool, err error) {
+	size := C.size_t(unsafe.Sizeof(value))
+	if C.zmq_getsockopt(s.socket, C.int(option), unsafe.Pointer(&value), &size) != 0 {
+		err = errno()
+		return
+	}
+	return
+}
+
 /* sockopt setters */
 
 type zmqOptions struct {
 	socket unsafe.Pointer
-}
-
-func (s *zmqOptions) SetHWM(value uint64) error {
-	return s.SetSockOptUInt64(HWM, value)
-}
-
-func (s *zmqOptions) SetSwap(value int64) error {
-	return s.SetSockOptInt64(SWAP, value)
 }
 
 func (s *zmqOptions) SetAffinity(value uint64) error {
@@ -397,14 +341,6 @@ func (s *zmqOptions) SetRate(value int64) error {
 
 func (s *zmqOptions) SetRecoveryIvl(value int64) error {
 	return s.SetSockOptInt64(RECOVERY_IVL, value)
-}
-
-func (s *zmqOptions) SetRecoveryIvlMsec(value int64) error {
-	return s.SetSockOptInt64(RECOVERY_IVL_MSEC, value)
-}
-
-func (s *zmqOptions) SetMcastLoop(value int64) error {
-	return s.SetSockOptInt64(MCAST_LOOP, value)
 }
 
 func (s *zmqOptions) SetSndBuf(value uint64) error {
@@ -441,14 +377,6 @@ func (s *zmqOptions) RcvMore() (rval uint64, e error) {
 	return s.GetSockOptUInt64(RCVMORE)
 }
 
-func (s *zmqOptions) HWM() (uint64, error) {
-	return s.GetSockOptUInt64(HWM)
-}
-
-func (s *zmqOptions) Swap() (int64, error) {
-	return s.GetSockOptInt64(SWAP)
-}
-
 func (s *zmqOptions) Affinity() (uint64, error) {
 	return s.GetSockOptUInt64(AFFINITY)
 }
@@ -463,14 +391,6 @@ func (s *zmqOptions) Rate() (int64, error) {
 
 func (s *zmqOptions) RecoveryIvl() (int64, error) {
 	return s.GetSockOptInt64(RECOVERY_IVL)
-}
-
-func (s *zmqOptions) RecoveryIvlMsec() (int64, error) {
-	return s.GetSockOptInt64(RECOVERY_IVL_MSEC)
-}
-
-func (s *zmqOptions) McastLoop() (int64, error) {
-	return s.GetSockOptInt64(MCAST_LOOP)
 }
 
 func (s *zmqOptions) SndBuf() (uint64, error) {
@@ -523,57 +443,6 @@ func (s *zmqSocket) Connect(address string) error {
 	return nil
 }
 
-// Send a message to the socket.
-// int zmq_send (void *s, zmq_msg_t *msg, int flags);
-func (s *zmqSocket) Send(data []byte, flags SendRecvOption) error {
-	var m C.zmq_msg_t
-	// Copy data array into C-allocated buffer.
-	size := C.size_t(len(data))
-
-	if C.zmq_msg_init_size(&m, size) != 0 {
-		return errno()
-	}
-
-	if size > 0 {
-		// FIXME Ideally this wouldn't require a copy.
-		C.memcpy(unsafe.Pointer(C.zmq_msg_data(&m)), unsafe.Pointer(&data[0]), size) // XXX I hope this works...(seems to)
-	}
-
-	if C.zmq_send(s.s, &m, C.int(flags)) != 0 {
-		// zmq_send did not take ownership, free message
-		C.zmq_msg_close(&m)
-		return errno()
-	}
-	return nil
-}
-
-// Receive a message from the socket.
-// int zmq_recv (void *s, zmq_msg_t *msg, int flags);
-func (s *zmqSocket) Recv(flags SendRecvOption) (data []byte, err error) {
-	// Allocate and initialise a new zmq_msg_t
-	var m C.zmq_msg_t
-	if C.zmq_msg_init(&m) != 0 {
-		err = errno()
-		return
-	}
-	defer C.zmq_msg_close(&m)
-	// Receive into message
-	if C.zmq_recv(s.s, &m, C.int(flags)) != 0 {
-		err = errno()
-		return
-	}
-	// Copy message data into a byte array
-	// FIXME Ideally this wouldn't require a copy.
-	size := C.zmq_msg_size(&m)
-	if size > 0 {
-		data = make([]byte, int(size))
-		C.memcpy(unsafe.Pointer(&data[0]), C.zmq_msg_data(&m), size)
-	} else {
-		data = nil
-	}
-	return
-}
-
 // Send a multipart message.
 func (s *zmqSocket) SendMultipart(parts [][]byte, flags SendRecvOption) (err error) {
 	for i := 0; i < len(parts)-1; i++ {
@@ -608,6 +477,7 @@ func (s *zmqSocket) RecvMultipart(flags SendRecvOption) (parts [][]byte, err err
 	return
 }
 
+// return the
 func (s *zmqSocket) apiSocket() unsafe.Pointer {
 	return s.s
 }
@@ -618,10 +488,10 @@ func (s *zmqSocket) Options() SocketOptions {
 
 // Item to poll for read/write events on, either a Socket or a file descriptor
 type PollItem struct {
-	Socket  Socket     // socket to poll for events on 
-	Fd      int        // fd to poll for events on as returned from os.File.Fd() 
-	Events  PollEvents // event set to poll for
-	REvents PollEvents // events that were present
+	Socket  Socket          // socket to poll for events on
+	Fd      ZmqOsSocketType // fd to poll for events on as returned from os.File.Fd()
+	Events  PollEvents      // event set to poll for
+	REvents PollEvents      // events that were present
 }
 
 // a set of items to poll for events on
@@ -633,7 +503,7 @@ func Poll(items []PollItem, timeout int64) (count int, err error) {
 	zitems := make([]C.zmq_pollitem_t, len(items))
 	for i, pi := range items {
 		zitems[i].socket = pi.Socket.apiSocket()
-		zitems[i].fd = C.int(pi.Fd)
+		zitems[i].fd = pi.Fd.ToRaw()
 		zitems[i].events = C.short(pi.Events)
 	}
 	rc := int(C.zmq_poll(&zitems[0], C.int(len(zitems)), C.long(timeout)))
