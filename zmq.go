@@ -84,15 +84,15 @@ const (
 	SNDMORE = SendRecvOption(C.ZMQ_SNDMORE)
 )
 
-type zmqErrno syscall.Errno
+type Errno syscall.Errno
 
 var (
 	// Additional ZMQ errors
-	ENOTSOCK       error = zmqErrno(C.ENOTSOCK)
-	EFSM           error = zmqErrno(C.EFSM)
-	ENOCOMPATPROTO error = zmqErrno(C.ENOCOMPATPROTO)
-	ETERM          error = zmqErrno(C.ETERM)
-	EMTHREAD       error = zmqErrno(C.EMTHREAD)
+	ENOTSOCK       error = Errno(C.ENOTSOCK)
+	EFSM           error = Errno(C.EFSM)
+	ENOCOMPATPROTO error = Errno(C.ENOCOMPATPROTO)
+	ETERM          error = Errno(C.ETERM)
+	EMTHREAD       error = Errno(C.EMTHREAD)
 )
 
 type PollEvents C.short
@@ -130,11 +130,11 @@ func Version() (int, int, int) {
 	return int(major), int(minor), int(patch)
 }
 
-func (e zmqErrno) Error() string {
+func (e Errno) Error() string {
 	return C.GoString(C.zmq_strerror(C.int(e)))
 }
 
-// If possible, convert a syscall.Errno to a zmqErrno.
+// If possible, convert a syscall.Errno to a Errno.
 func casterr(fromcgo error) error {
 	errno, ok := fromcgo.(syscall.Errno)
 	if !ok {
@@ -152,7 +152,7 @@ func casterr(fromcgo error) error {
 }
 
 func getErrorForTesting() error {
-	return zmqErrno(C.EFSM)
+	return Errno(C.EFSM)
 }
 
 /*
