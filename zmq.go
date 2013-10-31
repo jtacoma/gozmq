@@ -278,12 +278,13 @@ func (s *Socket) SetSockOptStringNil(option StringSocketOption) error {
 // Get an int option from the socket.
 // int zmq_getsockopt (void *s, int option, void *optval, size_t *optvallen);
 func (s *Socket) GetSockOptInt(option IntSocketOption) (value int, err error) {
-	size := C.size_t(unsafe.Sizeof(value))
-	var rc C.int
-	if rc, err = C.zmq_getsockopt(s.s, C.int(option), unsafe.Pointer(&value), &size); rc != 0 {
+	var cvalue, rc C.int
+	size := C.size_t(unsafe.Sizeof(cvalue))
+	if rc, err = C.zmq_getsockopt(s.s, C.int(option), unsafe.Pointer(&cvalue), &size); rc != 0 {
 		err = casterr(err)
 		return
 	}
+	value = int(cvalue)
 	return
 }
 
